@@ -162,7 +162,7 @@
         "url": "https://httpbin.org/post",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"leadId\": $json.leadId,\n  \"fullName\": $json.name,\n  \"email\": $json.email,\n  \"phone\": $json.phone,\n  \"company\": $json.company,\n  \"cleansedAt\": new Date().toISOString()\n}",
+        "jsonBody": "{\n  \"leadId\": \"{{ $json.leadId }}\",\n  \"fullName\": \"{{ $json.name }}\",\n  \"email\": \"{{ $json.email }}\",\n  \"phone\": \"{{ $json.phone }}\",\n  \"company\": \"{{ $json.company }}\",\n  \"cleansedAt\": \"{{ $now.toISO() }}\"\n}",
         "options": {}
       },
       "id": "node-9-post-clean-lead",
