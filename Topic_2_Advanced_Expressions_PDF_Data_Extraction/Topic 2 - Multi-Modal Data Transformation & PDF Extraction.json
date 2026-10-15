@@ -153,7 +153,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://dummyjson.com/c/ef50-0250-471c-b635",
+        "url": "https://httpbin.org/post",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ $json }}",
