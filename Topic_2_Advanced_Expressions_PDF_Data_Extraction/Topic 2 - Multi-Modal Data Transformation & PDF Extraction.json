@@ -1,0 +1,295 @@
+{
+  "name": "Topic 2 - Multi-Modal Data Transformation & PDF Extraction",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "node-1-manual-trigger",
+      "name": "Manual_Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const invoiceText = \n`%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj\n4 0 obj << /Length 265 >> stream\nBT\n/F1 12 Tf\n72 700 Td (INVOICE NUMBER: INV-PDF-2026-904) Tj\n0 -20 Td (DATE: 2026-10-14) Tj\n0 -20 Td (VENDOR: Acme Industrial Automation Corp) Tj\n0 -30 Td (ITEM: Industrial Sensor Pack x3 @ 150.00 USD = 450.00 USD) Tj\n0 -20 Td (ITEM: DIN Rail Power Supply x2 @ 85.50 USD = 171.00 USD) Tj\n0 -30 Td (SUBTOTAL: 621.00 USD) Tj\n0 -20 Td (TAX: 49.68 USD) Tj\n0 -20 Td (TOTAL: 670.68 USD) Tj\nET\nendstream endobj\n5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\nxref\n0 6\n0000000000 65535 f\n0000000009 00000 n\n0000000058 00000 n\n0000000115 00000 n\n0000000244 00000 n\n0000000560 00000 n\ntrailer << /Size 6 /Root 1 0 R >>\nstartxref\n637\n%%EOF`;\n\nconst base64Data = Buffer.from(invoiceText).toString('base64');\nreturn {\n  json: {\n    fileName: \"vendor_invoice_INV-904.pdf\",\n    sourceChannel: \"Supplier_Portal_Upload\",\n    fileType: \"application/pdf\"\n  },\n  binary: {\n    data: {\n      data: base64Data,\n      mimeType: \"application/pdf\",\n      fileName: \"vendor_invoice_INV-904.pdf\",\n      fileExtension: \"pdf\"\n    }\n  }\n};"
+      },
+      "id": "node-2a-simulate-pdf",
+      "name": "Code_SimulatePDFInvoiceBinary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data"
+      },
+      "id": "node-3-extract-pdf",
+      "name": "Extract_PDF_Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        720,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawText = $input.item.json.text || \"\";\n\n// Extract metadata fields using Regex\nconst invoiceNumMatch = rawText.match(/INVOICE NUMBER:\\s*([A-Z0-9-]+)/i);\nconst dateMatch = rawText.match(/DATE:\\s*([0-9-]+)/i);\nconst vendorMatch = rawText.match(/VENDOR:\\s*([^\\r\\n]+)/i);\nconst totalMatch = rawText.match(/TOTAL:\\s*([0-9.]+)/i);\nconst subtotalMatch = rawText.match(/SUBTOTAL:\\s*([0-9.]+)/i);\nconst taxMatch = rawText.match(/TAX:\\s*([0-9.]+)/i);\n\n// Extract line items\nconst itemRegex = /ITEM:\\s*([^x]+)x([0-9]+)\\s*@\\s*([0-9.]+)\\s*USD\\s*=\\s*([0-9.]+)\\s*USD/gi;\nconst lineItems = [];\nlet match;\nwhile ((match = itemRegex.exec(rawText)) !== null) {\n  lineItems.push({\n    sku: \"PDF-EXTRACTED-SKU\",\n    description: match[1].trim(),\n    quantity: parseInt(match[2], 10),\n    unitPrice: parseFloat(match[3]),\n    total: parseFloat(match[4])\n  });\n}\n\nreturn {\n  json: {\n    sourceType: \"PDF_INVOICE\",\n    orderId: invoiceNumMatch ? invoiceNumMatch[1] : \"UNKNOWN_INV\",\n    orderDate: dateMatch ? dateMatch[1] : new Date().toISOString(),\n    customer: {\n      fullName: vendorMatch ? vendorMatch[1].trim() : \"Unknown Vendor\",\n      email: \"billing@acmeindustrial.com\",\n      phone: \"+1-800-555-0199\"\n    },\n    items: lineItems,\n    financials: {\n      subtotal: subtotalMatch ? parseFloat(subtotalMatch[1]) : 0,\n      tax: taxMatch ? parseFloat(taxMatch[1]) : 0,\n      total: totalMatch ? parseFloat(totalMatch[1]) : 0\n    }\n  }\n};"
+      },
+      "id": "node-4-transform-parse-pdf",
+      "name": "Transform_ParsePDFInvoice",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      orderId: \"LEG-8841\",\n      orderDate: \"10/14/2026\",\n      sourceTimezone: \"America/New_York\",\n      customer: {\n        rawName: \" jOHn dOE-sMITH \",\n        email: \"JOHN.DOE@GMAIL.COM \",\n        phone: \"(555) 019-2834\"\n      },\n      items: [\n        { sku: \"item-01\", description: \"Mechanical Keyboard\", unitPrice: \" $129.99 \", quantity: 2 },\n        { sku: \"item-02\", description: \"Wrist Rest\", unitPrice: \"24.50\", quantity: 1 }\n      ],\n      discountPercent: 10\n    }\n  },\n  {\n    json: {\n      orderId: \"LEG-8842\",\n      orderDate: \"2026-10-15T08:45:00-07:00\",\n      sourceTimezone: \"America/Los_Angeles\",\n      customer: {\n        rawName: \"ALICE WONDERLAND\",\n        email: \"alice@adventures.co.uk\",\n        phone: \"+44 20 7946 0919\"\n      },\n      items: [\n        { sku: \"item-09\", description: \"UltraWide Monitor 34-inch\", unitPrice: \"499.00 USD\", quantity: 1 },\n        { sku: \"item-12\", description: \"Monitor Arm Mount\", unitPrice: \"$85.00\", quantity: 2 }\n      ],\n      discountPercent: 15\n    }\n  }\n];"
+      },
+      "id": "node-2b-legacy-orders",
+      "name": "Code_GenerateLegacyOrders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst rawDate = item.orderDate;\nconst tz = item.sourceTimezone || 'UTC';\nlet parsedDate;\nif (rawDate.includes('/')) {\n  parsedDate = DateTime.fromFormat(rawDate.trim(), 'MM/dd/yyyy', { zone: tz });\n} else {\n  parsedDate = DateTime.fromISO(rawDate.trim(), { zone: tz });\n}\nreturn {\n  json: {\n    ...item,\n    normalizedDateUtc: parsedDate.toUTC().toISO(),\n    displayDate: parsedDate.toFormat('yyyy-MM-dd HH:mm:ss')\n  }\n};"
+      },
+      "id": "node-5-normalize-dates",
+      "name": "Code_NormalizeDates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst TAX_RATE = 0.085;\nconst discountPct = Number(item.discountPercent || 0);\nconst cleanedItems = (item.items || []).map(line => {\n  const cleanPrice = Number(String(line.unitPrice).replace(/[^0-9.-]+/g, '')) || 0;\n  const qty = Number(line.quantity) || 1;\n  return {\n    sku: String(line.sku).toUpperCase().trim(),\n    description: String(line.description).trim(),\n    quantity: qty,\n    unitPrice: cleanPrice,\n    lineTotal: Number((cleanPrice * qty).toFixed(2))\n  };\n});\nconst subtotal = cleanedItems.reduce((acc, curr) => acc + curr.lineTotal, 0);\nconst discountAmount = Number((subtotal * (discountPct / 100)).toFixed(2));\nconst taxableAmount = subtotal - discountAmount;\nconst taxAmount = Number((taxableAmount * TAX_RATE).toFixed(2));\nconst grandTotal = Number((taxableAmount + taxAmount).toFixed(2));\n\n// Clean customer name\nconst rawName = (item.customer?.rawName || \"\").trim();\nconst cleanedName = rawName.toLowerCase().replace(/\\b\\w/g, c => c.toUpperCase());\n\nreturn {\n  json: {\n    sourceType: \"LEGACY_JSON\",\n    orderId: item.orderId,\n    orderDate: item.normalizedDateUtc,\n    customer: {\n      fullName: cleanedName,\n      email: (item.customer?.email || \"\").toLowerCase().trim(),\n      phone: item.customer?.phone || \"\"\n    },\n    items: cleanedItems,\n    financials: {\n      subtotal: Number(subtotal.toFixed(2)),\n      discount: discountAmount,\n      tax: taxAmount,\n      total: grandTotal\n    }\n  }\n};"
+      },
+      "id": "node-6-process-line-items",
+      "name": "Transform_ProcessLineItems",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "field-1",
+              "name": "documentType",
+              "value": "={{ $json.sourceType }}",
+              "type": "string"
+            },
+            {
+              "id": "field-2",
+              "name": "erpTransactionId",
+              "value": "={{ 'TX-' + $json.orderId }}",
+              "type": "string"
+            },
+            {
+              "id": "field-3",
+              "name": "accountName",
+              "value": "={{ $json.customer.fullName }}",
+              "type": "string"
+            },
+            {
+              "id": "field-4",
+              "name": "contactEmail",
+              "value": "={{ $json.customer.email }}",
+              "type": "string"
+            },
+            {
+              "id": "field-5",
+              "name": "lineItemCount",
+              "value": "={{ $json.items.length }}",
+              "type": "number"
+            },
+            {
+              "id": "field-6",
+              "name": "amountPayable",
+              "value": "={{ $json.financials.total }}",
+              "type": "number"
+            },
+            {
+              "id": "field-7",
+              "name": "processedAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-7-standardize-erp",
+      "name": "Edit_Fields_StandardizeERP",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dummyjson.com/c/ef50-0250-471c-b635",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "node-8-post-clean-order",
+      "name": "HTTP_PostCleanOrderToERP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst totalRevenue = items.reduce((sum, it) => sum + (it.json.amountPayable || 0), 0);\n\nreturn [{\n  json: {\n    batchStatus: \"COMPLETED\",\n    totalOrdersProcessed: items.length,\n    cumulativeRevenueUSD: Number(totalRevenue.toFixed(2)),\n    processedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "node-9-audit-summary",
+      "name": "Code_AuditSummary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual_Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code_SimulatePDFInvoiceBinary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code_GenerateLegacyOrders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code_SimulatePDFInvoiceBinary": {
+      "main": [
+        [
+          {
+            "node": "Extract_PDF_Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract_PDF_Text": {
+      "main": [
+        [
+          {
+            "node": "Transform_ParsePDFInvoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform_ParsePDFInvoice": {
+      "main": [
+        [
+          {
+            "node": "Edit_Fields_StandardizeERP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code_GenerateLegacyOrders": {
+      "main": [
+        [
+          {
+            "node": "Code_NormalizeDates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code_NormalizeDates": {
+      "main": [
+        [
+          {
+            "node": "Transform_ProcessLineItems",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform_ProcessLineItems": {
+      "main": [
+        [
+          {
+            "node": "Edit_Fields_StandardizeERP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit_Fields_StandardizeERP": {
+      "main": [
+        [
+          {
+            "node": "HTTP_PostCleanOrderToERP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP_PostCleanOrderToERP": {
+      "main": [
+        [
+          {
+            "node": "Code_AuditSummary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
