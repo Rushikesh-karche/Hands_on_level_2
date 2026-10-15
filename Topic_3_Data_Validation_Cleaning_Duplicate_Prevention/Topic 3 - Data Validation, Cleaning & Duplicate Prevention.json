@@ -1,0 +1,299 @@
+{
+  "name": "Topic 3 - Data Validation, Cleaning & Duplicate Prevention",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "node-1-manual-trigger",
+      "name": "Manual_Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simulates 5 marketing form submissions with common data quality flaws\nreturn [\n  {\n    json: {\n      leadId: \"LD-001\",\n      name: \" Sarah Connor \",\n      email: \"SARAH.CONNOR@SKYNET-RESIST.ORG \",\n      phone: \"(555) 234-5678\",\n      company: \"Tech Resistance\",\n      notes: \"Valid lead with US phone formatting\"\n    }\n  },\n  {\n    json: {\n      leadId: \"LD-002\",\n      name: \"Bad Email User\",\n      email: \"invalid-email@@nowhere\",\n      phone: \"+1 555 987 6543\",\n      company: \"Test Corp\",\n      notes: \"Malformed email\"\n    }\n  },\n  {\n    json: {\n      leadId: \"LD-003\",\n      name: \"Spam Bot\",\n      email: \"freebie@mailinator.com\",\n      phone: \"555-111-2222\",\n      company: \"Spam Co\",\n      notes: \"Disposable domain\"\n    }\n  },\n  {\n    json: {\n      leadId: \"LD-004\",\n      name: \"Sarah Connor (Duplicate Submission)\",\n      email: \"sarah.connor@skynet-resist.org\",\n      phone: \"+1 (555) 234-5678\",\n      company: \"Tech Resistance Inc\",\n      notes: \"Duplicate of LD-001 with minor whitespace variance\"\n    }\n  },\n  {\n    json: {\n      leadId: \"LD-005\",\n      name: \"Marcus Wright\",\n      email: \"marcus@cyberdyne.com\",\n      phone: \"+44 20 7946 0919\",\n      company: \"Cyberdyne Systems\",\n      notes: \"Valid international UK lead\"\n    }\n  }\n];"
+      },
+      "id": "node-2-generate-raw-leads",
+      "name": "Code_GenerateRawLeads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\n// 1. Clean and lowercase email\nconst cleanEmail = String(item.email || '').trim().toLowerCase();\n\n// 2. Clean phone number and standardize to E.164\nlet rawPhone = String(item.phone || '').trim();\nlet cleanPhone = rawPhone.replace(/[^\\d+]/g, '');\n\n// Prepend +1 if 10-digit US number without country code\nif (/^\\d{10}$/.test(cleanPhone)) {\n  cleanPhone = '+1' + cleanPhone;\n} else if (/^1\\d{10}$/.test(cleanPhone)) {\n  cleanPhone = '+' + cleanPhone;\n}\n\n// 3. Trim name and company\nconst cleanName = String(item.name || '').trim();\nconst cleanCompany = String(item.company || '').trim();\n\nreturn {\n  json: {\n    leadId: item.leadId,\n    name: cleanName,\n    email: cleanEmail,\n    phone: cleanPhone,\n    company: cleanCompany,\n    rawNotes: item.notes\n  }\n};"
+      },
+      "id": "node-3-sanitize-and-format",
+      "name": "Code_SanitizeAndFormat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst errors = [];\n\n// 1. Email format check\nconst emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\nif (!emailRegex.test(item.email)) {\n  errors.push(\"INVALID_EMAIL_SYNTAX\");\n}\n\n// 2. Disposable email domain check\nconst disposableDomains = ['mailinator.com', 'tempmail.com', '10minutemail.com', 'guerrillamail.com', 'trashmail.com'];\nconst emailDomain = item.email.split('@')[1] || '';\nif (disposableDomains.includes(emailDomain)) {\n  errors.push(\"DISPOSABLE_EMAIL_DOMAIN_BLOCKED\");\n}\n\n// 3. Phone format check (E.164: + followed by 10 to 15 digits)\nconst e164Regex = /^\\+[1-9]\\d{9,14}$/;\nif (!e164Regex.test(item.phone)) {\n  errors.push(\"INVALID_E164_PHONE\");\n}\n\n// 4. Name check\nif (!item.name || item.name.length < 2) {\n  errors.push(\"NAME_TOO_SHORT\");\n}\n\nconst isValid = errors.length === 0;\n\nreturn {\n  json: {\n    ...item,\n    isValid: isValid,\n    validationErrors: errors\n  }\n};"
+      },
+      "id": "node-4-validate-lead-quality",
+      "name": "Code_ValidateLeadQuality",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-is-quality-lead",
+              "leftValue": "={{ $json.isValid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-5-if-quality-lead",
+      "name": "IF_IsQualityLead",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    quarantineType: \"SYNTAX_OR_SPAM_VIOLATION\",\n    leadId: $json.leadId,\n    email: $json.email,\n    reasons: $json.validationErrors,\n    quarantinedAt: new Date().toISOString()\n  }\n};"
+      },
+      "id": "node-7-log-quarantine-invalid",
+      "name": "Log_QuarantineInvalid",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst seenEmails = new Set();\nconst seenPhones = new Set();\nconst results = [];\n\nfor (const entry of items) {\n  const item = entry.json;\n  let isDup = false;\n  let dupReason = '';\n\n  if (seenEmails.has(item.email)) {\n    isDup = true;\n    dupReason = `Duplicate Email: ${item.email}`;\n  } else if (seenPhones.has(item.phone)) {\n    isDup = true;\n    dupReason = `Duplicate Phone: ${item.phone}`;\n  } else {\n    seenEmails.add(item.email);\n    seenPhones.add(item.phone);\n  }\n\n  results.push({\n    json: {\n      ...item,\n      isDuplicate: isDup,\n      duplicateReason: dupReason\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "node-6-deduplicate-leads",
+      "name": "Code_DeduplicateLeads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-is-unique-lead",
+              "leftValue": "={{ $json.isDuplicate }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-8-if-unique-lead",
+      "name": "IF_IsUniqueLead",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    quarantineType: \"DUPLICATE_RECORD_SUPPRESSED\",\n    leadId: $json.leadId,\n    email: $json.email,\n    phone: $json.phone,\n    reason: $json.duplicateReason,\n    quarantinedAt: new Date().toISOString()\n  }\n};"
+      },
+      "id": "node-10-log-quarantine-duplicate",
+      "name": "Log_QuarantineDuplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://httpbin.org/post",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"leadId\": $json.leadId,\n  \"fullName\": $json.name,\n  \"email\": $json.email,\n  \"phone\": $json.phone,\n  \"company\": $json.company,\n  \"cleansedAt\": new Date().toISOString()\n}",
+        "options": {}
+      },
+      "id": "node-9-post-clean-lead",
+      "name": "HTTP_PostCleanLeadToCRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1920,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const syncedLeads = $input.all();\nreturn [\n  {\n    json: {\n      status: \"LEAD_CLEANSING_BATCH_COMPLETE\",\n      leadsSentToCRM: syncedLeads.length,\n      leadRecords: syncedLeads.map(l => {\n        const itemData = l.json.json || l.json;\n        return {\n          crmLeadId: itemData.leadId || \"CRM_SYNCED\",\n          email: itemData.email,\n          phone: itemData.phone\n        };\n      }),\n      timestamp: new Date().toISOString()\n    }\n  }\n];"
+      },
+      "id": "node-11-pipeline-metrics",
+      "name": "Code_PipelineMetrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Manual_Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code_GenerateRawLeads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code_GenerateRawLeads": {
+      "main": [
+        [
+          {
+            "node": "Code_SanitizeAndFormat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code_SanitizeAndFormat": {
+      "main": [
+        [
+          {
+            "node": "Code_ValidateLeadQuality",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code_ValidateLeadQuality": {
+      "main": [
+        [
+          {
+            "node": "IF_IsQualityLead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF_IsQualityLead": {
+      "main": [
+        [
+          {
+            "node": "Code_DeduplicateLeads",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log_QuarantineInvalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code_DeduplicateLeads": {
+      "main": [
+        [
+          {
+            "node": "IF_IsUniqueLead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF_IsUniqueLead": {
+      "main": [
+        [
+          {
+            "node": "HTTP_PostCleanLeadToCRM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log_QuarantineDuplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP_PostCleanLeadToCRM": {
+      "main": [
+        [
+          {
+            "node": "Code_PipelineMetrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
