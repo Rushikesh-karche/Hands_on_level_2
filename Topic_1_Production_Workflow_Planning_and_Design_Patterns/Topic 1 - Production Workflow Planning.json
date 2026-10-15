@@ -1,0 +1,348 @@
+{
+  "name": "Topic 1 - Production Workflow Planning",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "v1/transactions",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1040,
+        368
+      ],
+      "id": "82f125f5-ecfa-40aa-afbf-9b20add6dd01",
+      "name": "Webhook_Ingest",
+      "webhookId": "v1-transactions"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"message\": \"Transaction accepted for processing\",\n  \"status\": \"ACCEPTED\"\n}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -816,
+        368
+      ],
+      "id": "43666b05-6057-49f3-b4e3-a8a8a360ca1e",
+      "name": "Respond_To_Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nstaticData.processedTransactions = staticData.processedTransactions || [];\nconst body = $input.first().json.body || $input.first().json;\nconst transactionId = String(body.transactionId || '').trim();\nif (!transactionId) {\n  return {\n    json: {\n      isDuplicate: false,\n      hasId: false,\n      payload: body,\n      errorMsg: 'Missing required transactionId'\n    }\n  };\n}\nconst isDuplicate = staticData.processedTransactions.includes(transactionId);\nif (!isDuplicate) {\n  staticData.processedTransactions.push(transactionId);\n  if (staticData.processedTransactions.length > 500) {\n    staticData.processedTransactions.shift();\n  }\n}\nreturn {\n  json: {\n    transactionId: transactionId,\n    isDuplicate: isDuplicate,\n    hasId: true,\n    payload: body\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -592,
+        368
+      ],
+      "id": "cbdf8d41-b39d-40f7-b0ef-30b40a8d27ce",
+      "name": "Code_CheckIdempotency"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-is-duplicate",
+              "leftValue": "={{ $json.isDuplicate }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        368
+      ],
+      "id": "66c208a3-cab3-46c7-bb4a-4b4a247fd470",
+      "name": "IF_IsNewTransaction"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    event: \"TRANSACTION_BYPASSED\",\n    reason: \"Duplicate transactionId detected\",\n    transactionId: $json.transactionId,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        560
+      ],
+      "id": "f5f18b58-3418-44c9-a15d-eb59c476075b",
+      "name": "Log_BypassDuplicate"
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $json.payload || {};\nconst errors = [];\nconst emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\nif (!payload.customerEmail || !emailRegex.test(payload.customerEmail)) {\n  errors.push(\"Invalid or missing 'customerEmail'\");\n}\nconst amount = Number(payload.amount);\nif (isNaN(amount) || amount <= 0) {\n  errors.push(\"Field 'amount' must be a positive number greater than 0\");\n}\nconst currencyRegex = /^[A-Z]{3}$/;\nif (!payload.currency || !currencyRegex.test(payload.currency)) {\n  errors.push(\"Field 'currency' must be a valid 3-letter uppercase ISO code (e.g. USD, EUR, GBP)\");\n}\nconst isValid = errors.length === 0;\nreturn {\n  json: {\n    transactionId: $json.transactionId,\n    isValid: isValid,\n    validationErrors: errors,\n    sanitizedPayload: {\n      transactionId: $json.transactionId,\n      customerEmail: String(payload.customerEmail || '').toLowerCase().trim(),\n      amount: amount,\n      currency: String(payload.currency || '').toUpperCase().trim(),\n      description: payload.description || 'Standard Order Charge'\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        208
+      ],
+      "id": "691d6a49-04af-443c-bb39-7bdc3a33af6f",
+      "name": "Code_ValidateSchema"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-is-valid",
+              "leftValue": "={{ $json.isValid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        80,
+        208
+      ],
+      "id": "872c9a31-aa34-4cfd-ab37-632edba02400",
+      "name": "IF_IsValidPayload"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    event: \"VALIDATION_FAILED\",\n    transactionId: $json.transactionId,\n    errors: $json.validationErrors,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        368
+      ],
+      "id": "a5920be9-31d9-4838-aa39-7d0bedaa22c1",
+      "name": "Log_ValidationError"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dummyjson.com/c/your-unique-id",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "transactionId",
+              "value": "={{ $('Code_ValidateSchema').item.json.sanitizedPayload.transactionId }}"
+            },
+            {
+              "name": "customerEmail",
+              "value": "={{ $('Code_ValidateSchema').item.json.sanitizedPayload.customerEmail }}"
+            },
+            {
+              "name": "amount",
+              "value": "={{ $('Code_ValidateSchema').item.json.sanitizedPayload.amount }}"
+            },
+            {
+              "name": "currency",
+              "value": "={{ $('Code_ValidateSchema').item.json.sanitizedPayload.currency }}"
+            },
+            {
+              "name": "description",
+              "value": "={{ $('Code_ValidateSchema').item.json.sanitizedPayload.description }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        288,
+        48
+      ],
+      "id": "2babf0e1-010e-427d-9d03-dee79ce243e1",
+      "name": "HTTP_PostBillingCharge",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.item.json;\nreturn {\n  json: {\n    status: \"PROCESSED\",\n    chargeId: response.chargeId || 'ch_generated',\n    transactionId: response.transactionId || $('Code_ValidateSchema').first().json.sanitizedPayload.transactionId,\n    amountCharged: response.amount,\n    currency: response.currency,\n    completedAt: new Date().toISOString()\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        48
+      ],
+      "id": "0c28f4a0-4a78-4eab-ad58-85c62857be51",
+      "name": "Code_FormatSuccessRecord"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1040,
+        656
+      ],
+      "id": "618c4c8b-a39f-49e7-a5a6-28e5f48a59b2",
+      "name": "Error_Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const errorData = $input.first().json;\nreturn {\n  json: {\n    alertType: \"CRITICAL_PIPELINE_INCIDENT\",\n    workflowId: $workflow.id,\n    workflowName: $workflow.name,\n    failedNode: errorData.execution.error.node?.name || \"Unknown Node\",\n    errorMessage: errorData.execution.error.message || \"Unspecified execution failure\",\n    executionUrl: errorData.execution.url,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -816,
+        656
+      ],
+      "id": "d9adef56-15ef-46b7-9ea8-793b1ea75ea2",
+      "name": "Code_BuildIncidentAlert"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook_Ingest": {
+      "main": [
+        [
+          {
+            "node": "Respond_To_Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code_CheckIdempotency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code_CheckIdempotency": {
+      "main": [
+        [
+          {
+            "node": "IF_IsNewTransaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF_IsNewTransaction": {
+      "main": [
+        [
+          {
+            "node": "Code_ValidateSchema",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log_BypassDuplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code_ValidateSchema": {
+      "main": [
+        [
+          {
+            "node": "IF_IsValidPayload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF_IsValidPayload": {
+      "main": [
+        [
+          {
+            "node": "HTTP_PostBillingCharge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log_ValidationError",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP_PostBillingCharge": {
+      "main": [
+        [
+          {
+            "node": "Code_FormatSuccessRecord",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error_Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code_BuildIncidentAlert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d0f3a248-f930-425a-a89b-ff1fbca608de",
+  "meta": {
+    "instanceId": "a03c7678428ef19ededbf912f16f7d5798ec7b9ab4c17f2a2def6a9e791e7215"
+  },
+  "nodeGroups": [],
+  "id": "uPrQt8U3D2OxtZ9g",
+  "tags": []
+}
