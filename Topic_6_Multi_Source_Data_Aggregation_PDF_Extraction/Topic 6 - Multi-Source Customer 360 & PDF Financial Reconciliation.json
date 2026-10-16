@@ -1,0 +1,298 @@
+{
+  "name": "Topic 6 - Multi-Source Customer 360 & PDF Financial Reconciliation",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "node-manual-trigger",
+      "name": "Manual_Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  { json: { customerId: 'CUST-1001', companyName: 'Apex Logistics LLC', segment: 'Enterprise' } },\n  { json: { customerId: 'CUST-1002', companyName: 'Nexus BioTech', segment: 'Mid-Market' } }\n];"
+      },
+      "id": "node-mock-crm",
+      "name": "Code_MockCRMData",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  { json: { customerId: 'CUST-1001', totalSpendUSD: 145200.50 } },\n  { json: { customerId: 'CUST-1002', totalSpendUSD: 18400.00 } }\n];"
+      },
+      "id": "node-mock-sql",
+      "name": "Code_MockSQLData",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const invoiceText = `%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj\n4 0 obj << /Length 200 >> stream\nBT\n/F1 12 Tf\n72 700 Td (CUSTOMER ID: CUST-1001) Tj\n0 -20 Td (EXPENSE AMOUNT: 12500.00 USD) Tj\nET\nendstream endobj\n5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\nxref\n0 6\n0000000000 65535 f\n0000000009 00000 n\n0000000058 00000 n\n0000000115 00000 n\n0000000244 00000 n\n0000000495 00000 n\ntrailer << /Size 6 /Root 1 0 R >>\nstartxref\n572\n%%EOF`;\n\nreturn [{\n  json: { fileName: 'supplier_expenses.pdf' },\n  binary: { data: { data: Buffer.from(invoiceText).toString('base64'), mimeType: 'application/pdf', fileName: 'supplier_expenses.pdf' } }\n}];"
+      },
+      "id": "node-mock-pdf",
+      "name": "Code_SimulatePDFInvoice",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data"
+      },
+      "id": "node-extract-pdf",
+      "name": "Extract_PDF_Invoice",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        700,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $input.item.json.text || '';\nconst idMatch = text.match(/CUSTOMER ID:\\s*(CUST-[0-9]+)/i);\nconst amtMatch = text.match(/EXPENSE AMOUNT:\\s*([0-9.]+)/i);\n\nreturn [{\n  json: {\n    customerId: idMatch ? idMatch[1] : 'CUST-1001',\n    pdfExpenseUSD: amtMatch ? parseFloat(amtMatch[1]) : 12500.00\n  }\n}];"
+      },
+      "id": "node-parse-pdf",
+      "name": "Transform_ParseInvoiceText",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByFields",
+        "mergeByFields": {
+          "values": [
+            {
+              "field1": "customerId",
+              "field2": "customerId"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-merge-crm-sql",
+      "name": "Merge_CRM_With_SQL",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        700,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByFields",
+        "mergeByFields": {
+          "values": [
+            {
+              "field1": "customerId",
+              "field2": "customerId"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-merge-pdf",
+      "name": "Merge_With_PDFExpenses",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        1140,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst rev = Number(item.totalSpendUSD || 0);\nconst exp = Number(item.pdfExpenseUSD || 0);\nconst netMargin = Number((rev - exp).toFixed(2));\n\nreturn {\n  json: {\n    customerId: item.customerId,\n    companyName: item.companyName,\n    segment: item.segment,\n    totalSpendUSD: rev,\n    pdfExpenseUSD: exp,\n    netMarginUSD: netMargin,\n    tier: rev >= 100000 ? 'Enterprise Tier 1' : 'Standard',\n    synchronizedAt: new Date().toISOString()\n  }\n};"
+      },
+      "id": "node-customer-360",
+      "name": "Transform_ComputeCustomer360",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://httpbin.org/post",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "node-http-warehouse",
+      "name": "HTTP_PostToWarehouse",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nreturn [{\n  json: {\n    warehouseSyncStatus: 'SUCCESS',\n    totalCustomerProfilesSynced: items.length,\n    completedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "node-audit-summary",
+      "name": "Code_AuditSummary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual_Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code_MockCRMData",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code_MockSQLData",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code_SimulatePDFInvoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code_MockCRMData": {
+      "main": [
+        [
+          {
+            "node": "Merge_CRM_With_SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code_MockSQLData": {
+      "main": [
+        [
+          {
+            "node": "Merge_CRM_With_SQL",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Code_SimulatePDFInvoice": {
+      "main": [
+        [
+          {
+            "node": "Extract_PDF_Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract_PDF_Invoice": {
+      "main": [
+        [
+          {
+            "node": "Transform_ParseInvoiceText",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge_CRM_With_SQL": {
+      "main": [
+        [
+          {
+            "node": "Merge_With_PDFExpenses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform_ParseInvoiceText": {
+      "main": [
+        [
+          {
+            "node": "Merge_With_PDFExpenses",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge_With_PDFExpenses": {
+      "main": [
+        [
+          {
+            "node": "Transform_ComputeCustomer360",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform_ComputeCustomer360": {
+      "main": [
+        [
+          {
+            "node": "HTTP_PostToWarehouse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP_PostToWarehouse": {
+      "main": [
+        [
+          {
+            "node": "Code_AuditSummary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
