@@ -441,6 +441,29 @@
     },
     {
       "parameters": {
+        "sendTo": "karcherushi2000@gmail.com",
+        "subject": "={{ $('HTTP_MockDispatchNotification').item.json.json.subject }}",
+        "emailType": "text",
+        "message": "=Hi Support Team,\n\nA new support ticket has been dispatched:\n\n{{ $('HTTP_MockDispatchNotification').item.json.json.body }}\n\nPriority: {{ $('HTTP_MockDispatchNotification').item.json.json.priority }}\nAssigned Queue: {{ $('HTTP_MockDispatchNotification').item.json.json.queue }}\nSystem Recipient: {{ $('HTTP_MockDispatchNotification').item.json.json.recipientEmail }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1800,
+        160
+      ],
+      "id": "node-send-real-gmail",
+      "name": "Send_Real_Gmail",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "KHx0BYNbWlzY5PcZ",
+          "name": "Gmail account 19"
+        }
+      }
+    },
+    {
+      "parameters": {
         "jsCode": "const resp = $input.item.json;\nconst data = resp.json || resp;\nreturn {\n  json: {\n    event: \"TICKET_ROUTED_SUCCESSFULLY\",\n    dispatchId: resp.dispatchId || \"disp_\" + Math.random().toString(36).substring(2, 9),\n    assignedQueue: data.queue || resp.routedQueue || \"General Support\",\n    targetRecipient: data.recipientEmail || resp.recipient || \"support@example.com\",\n    deliveryStatus: resp.status || \"DELIVERED\",\n    timestamp: new Date().toISOString()\n  }\n};"
       },
       "id": "node-8-build-routing-audit",
@@ -449,7 +472,7 @@
       "typeVersion": 2,
       "position": [
         1800,
-        240
+        320
       ]
     }
   ],
@@ -591,6 +614,11 @@
     "HTTP_MockDispatchNotification": {
       "main": [
         [
+          {
+            "node": "Send_Real_Gmail",
+            "type": "main",
+            "index": 0
+          },
           {
             "node": "Code_BuildRoutingAudit",
             "type": "main",
