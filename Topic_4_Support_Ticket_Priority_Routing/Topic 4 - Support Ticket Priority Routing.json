@@ -427,7 +427,7 @@
         "url": "https://httpbin.org/post",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\n  \"recipientEmail\": \"{{ $json.recipientEmail }}\",\n  \"queue\": \"{{ $json.queue }}\",\n  \"subject\": \"{{ $json.subject }}\",\n  \"body\": \"{{ $json.body }}\",\n  \"priority\": \"{{ $json.priority }}\"\n}",
+        "jsonBody": "={\n  \"recipientEmail\": \"{{ $json.recipientEmail }}\",\n  \"queue\": \"{{ $json.queue }}\",\n  \"subject\": \"{{ $json.subject }}\",\n  \"body\": \"{{ $json.body }}\",\n  \"priority\": \"{{ $json.priority }}\"\n}",
         "options": {}
       },
       "id": "node-7-mock-dispatch-notification",
